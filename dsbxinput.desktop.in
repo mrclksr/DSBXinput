@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Mouse and Touchpad Configuration
+Name[de]=Maus- und Touchpad-Konfiguration
+Exec=@PROGRAM@
+Icon=input-mouse
+Terminal=false
+StartupNotify=True
+Type=Application
+Categories=Settings;

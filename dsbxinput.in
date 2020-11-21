@@ -1,0 +1,1041 @@
+#!/usr/local/bin/python3.7
+#
+# Copyright (c) 2020 Marcel Kaiser. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore	 import *
+from PyQt5.QtGui	 import *
+from subprocess		 import Popen, PIPE
+import os, re, sys, stat, pwd
+
+PROGRAM		 = '@PROGRAM@'
+LOCALE_PATH	 = '@LOCALE_PATH@'
+PATH_XINPUT	 = '@PREFIX@/bin/xinput'
+PATH_CFGFILE = '.config/DSB/@PROGRAM@.sh'
+WINDOW_TITLE = 'Configure pointer devices'
+
+__app = None
+
+class Prop:
+	N_XINPUT_PROP_IDS = 16
+	[
+		ENABLED,			  
+		SCROLL_METHOD,
+		SCROLL_METHODS_AVAIL,
+		ACCEL_PROFILE,
+		ACCEL_PROFILES_AVAIL,
+		ACCEL_SPEED,
+		CLICK_METHOD,
+		CLICK_METHODS_AVAIL,
+		SCROLL_BUTTON,
+		HORIZ_SCROLLING,  
+		NATURAL_SCROLLING,
+		LEFT_HANDED, 
+		TAPPING,
+		TAPPING_DRAG_LOCK,
+		TAPPING_BUTTON_MAPPING,
+		DISABLE_WHILE_TYPING
+	] = [ i for i in range(0, N_XINPUT_PROP_IDS) ]
+	[
+		TYPE_INT,
+		TYPE_STR,
+		TYPE_VEC,
+		TYPE_BOOL,
+		TYPE_FLOAT,
+	] = [ i for i in range(1, 6) ]
+
+	def __init__(self, varname, val, vartype, default = None,
+				 nbits = None, mutable = True):
+		self.val	 = val
+		self.nbits	 = nbits
+		self.varname = varname
+		self.default = default
+		self.vartype = vartype
+		self.mutable = mutable
+
+	@classmethod
+	def vecvar(self, varname, vecval, nbits, default = None, mutable = True):
+		return Prop(varname, vecval, self.TYPE_VEC, default, nbits, mutable)
+
+	@classmethod
+	def boolvar(self, varname, boolval, default = None, mutable = True):
+		return Prop(varname, boolval, self.TYPE_BOOL, default, mutable)
+
+	@classmethod
+	def floatvar(self, varname, floatval, default = None, mutable = True):
+		return Prop(varname, floatval, self.TYPE_FLOAT, default, mutable)
+
+	@classmethod
+	def strvar(self, varname, strval, default = None, mutable = True):
+		return Prop(varname, strval, self.TYPE_STR, default, mutable)
+
+	@classmethod
+	def intvar(self, varname, intval, default = None, mutable = True):
+		return Prop(varname, intval, self.TYPE_INT, default, mutable)
+
+	def to_bitlist(self):
+		if self.vartype != self.TYPE_VEC:
+			return None
+		bits = []
+		for i in range(self.nbits - 1, -1, -1):
+			if (self.val & (1 << i)):
+				bits.append('1')
+			else:
+				bits.append('0')
+		return ' '.join(bits)
+
+class VarTblItem:
+	def __init__(self, varid, default_key, vartype,
+				 is_default = False, mutable = True):
+		self.varid		= varid
+		self.default_key = default_key
+		self.vartype	= vartype
+		self.is_default	= is_default
+		self.mutable	= mutable
+
+vartable = {
+	'Device Enabled':
+		VarTblItem(
+			varid		= Prop.ENABLED,
+			default_key = None,
+			vartype     = Prop.TYPE_BOOL,
+			is_default  = False
+		),
+	'libinput Accel Profiles Available':
+		VarTblItem(
+			varid		= Prop.ACCEL_PROFILES_AVAIL,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False,
+			mutable		= False
+		),
+	'libinput Accel Profile Enabled':
+		VarTblItem(
+			varid		= Prop.ACCEL_PROFILE,
+			default_key	= 'libinput Accel Profile Enabled Default',
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False
+		),
+	'libinput Accel Profile Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Accel Speed':
+		VarTblItem(
+			varid		= Prop.ACCEL_SPEED,
+			default_key = 'libinput Accel Speed Default',
+			vartype		= Prop.TYPE_FLOAT,
+			is_default	= False
+		),
+	'libinput Accel Speed Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_FLOAT,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Click Methods Available':
+		VarTblItem(
+			varid		= Prop.CLICK_METHODS_AVAIL,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False,
+			mutable		= False
+		),
+	'libinput Click Method Enabled':
+		VarTblItem(
+			varid		= Prop.CLICK_METHOD,
+			default_key	= 'libinput Click Method Enabled Default',
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False
+		),
+	'libinput Click Method Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Horizontal Scroll Enabled':
+		VarTblItem(
+			varid		= Prop.HORIZ_SCROLLING,
+			default_key	= 'libinput Horizontal Scroll Enabled Default',
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= False
+		),
+	'libinput Horizontal Scroll Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Left Handed Enabled':
+		VarTblItem(
+			varid		= Prop.LEFT_HANDED,
+			default_key	= 'libinput Left Handed Enabled Default',
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= False
+		),
+	'libinput Left Handed Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Natural Scrolling Enabled':
+		VarTblItem(
+			varid		= Prop.NATURAL_SCROLLING,
+			default_key	= 'libinput Natural Scrolling Enabled Default',
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= False
+		),
+	'libinput Natural Scrolling Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Scroll Methods Available':
+		VarTblItem(
+			varid		= Prop.SCROLL_METHODS_AVAIL,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False,
+			mutable		= False
+		),
+	'libinput Scroll Method Enabled':
+		VarTblItem(
+			varid		= Prop.SCROLL_METHOD,
+			default_key	= 'libinput Scroll Method Enabled Default',
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False
+		),
+	'libinput Scroll Method Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Tapping Enabled':
+		VarTblItem(
+			varid		= Prop.TAPPING,
+			default_key	= 'libinput Tapping Enabled Default',
+			vartype		= Prop.TYPE_BOOL
+		),
+	'libinput Tapping Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Tapping Button Mapping Enabled':
+		VarTblItem(
+			varid		= Prop.TAPPING_BUTTON_MAPPING,
+			default_key	= 'libinput Tapping Button Mapping Enabled Default',
+			vartype		= Prop.TYPE_VEC,
+			is_default	= False
+		),
+	'libinput Tapping Button Mapping Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_VEC,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Disable While Typing Enabled':
+		VarTblItem(
+			varid		= Prop.DISABLE_WHILE_TYPING,
+			default_key	= 'libinput Disable While Typing Enabled Default',
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= False
+		),
+	'libinput Disable While Typing Enabled Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Tapping Drag Lock Enabled':
+		VarTblItem(
+			varid		= Prop.TAPPING_DRAG_LOCK,
+			default_key	= 'libinput Tapping Drag Lock Enabled Default',
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= False
+		),
+   'libinput Tapping Drag Lock Enabled Default':
+	   	VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_BOOL,
+			is_default	= True,
+			mutable		= False
+		),
+	'libinput Button Scrolling Button':
+		VarTblItem(
+			varid		= Prop.SCROLL_BUTTON,
+			default_key	= 'libinput Button Scrolling Button Default',
+			vartype		= Prop.TYPE_INT,
+			is_default	= False
+		),
+	'libinput Button Scrolling Button Default':
+		VarTblItem(
+			varid		= None,
+			default_key	= None,
+			vartype		= Prop.TYPE_INT,
+			is_default	= True,
+			mutable		= False
+		)
+}
+
+def xinput_bitvec_to_num(vec):
+	n, num, nbits = 0, 0, len(vec.split(',')) - 1
+	for b in vec.split(','):
+		num += ((1 << nbits) * int(b))
+		nbits -= 1
+	return num
+
+def xinput_var_to_prop(varname, val, vartype, default = None, mutable = True):
+	if vartype == Prop.TYPE_VEC:
+		if default != None:
+			return Prop.vecvar(
+				varname,
+				xinput_bitvec_to_num(val),
+				len(val.split(',')),
+				xinput_bitvec_to_num(default),
+				mutable
+			)
+		return Prop.vecvar(
+			varname,
+			xinput_bitvec_to_num(val),
+			len(val.split(',')),
+			None,
+			mutable
+		)
+	elif vartype == Prop.TYPE_BOOL:
+		if default != None:
+			return Prop.boolvar(
+				varname,
+				bool(int(val)),
+				bool(int(default)),
+				mutable
+			)
+		return Prop.boolvar(
+			varname,
+			bool(int(val)),
+			None,
+			mutable
+		)
+	elif vartype == Prop.TYPE_FLOAT:
+		if default != None:
+			return Prop.floatvar(
+				varname,
+				float(val),
+				float(default),
+				mutable
+			)
+		return Prop.floatvar(varname, float(val), None, mutable)
+	elif vartype == Prop.TYPE_INT:
+		if default != None:
+			return Prop.intvar(
+				varname,
+				int(val),
+				int(default),
+				mutable
+			)
+		return Prop.intvar(varname, int(val), None, mutable)
+	return None
+
+def xinput_get_devlist(type_str):
+	input_devs = []
+	rx = re.compile(
+		'.*?↳\s*(.*\S)\s*id=([0-9]+)' +
+		'\s*\[slave\s*' + type_str + '.*\]'
+	)
+	try:
+		proc = Popen([PATH_XINPUT], stdin=None, stdout=PIPE, stderr=None)
+	except OSError as err:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Failed to Popen("{}"): {}')
+				.format(PATH_XINPUT, err.strerror)
+		)
+	for l in proc.stdout.readlines():
+		m = rx.match(l.decode('utf-8'))
+		if not m:
+			continue
+		if re.match('.*XTEST.*', m.group(1)):
+			continue
+		input_devs.append({'name': m.group(1), 'id': m.group(2)})
+	proc.wait()
+	if proc.returncode != 0:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Command "{}" returned {}')
+				.format(PATH_XINPUT, proc.returncode)
+		)
+	return input_devs
+
+def xinput_get_props(devid):
+	props = []
+	rx = re.compile('\s*(.*?)\s*\(([0-9]+)\):\s*(.+)$')
+	try:
+		proc = Popen(
+			[PATH_XINPUT, 'list-props', devid],
+			stdin=None,
+			stdout=PIPE,
+			stderr=None
+		)
+	except OSError as err:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Failed to Popen("{}"): {}')
+				.format(PATH_XINPUT, err.strerror)
+		)
+	for l in proc.stdout.readlines():
+		m = rx.match(l.decode('utf-8'))
+		if m:
+			props.append(
+				{  'name':  m.group(1),
+				   'id':    m.group(2),
+				   'value': m.group(3)
+				}
+			)
+	proc.wait()
+	if proc.returncode != 0:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Command "{} list-props {}" returned {}')
+				.format(PATH_XINPUT, devid, proc.returncode)
+		)
+	return props
+
+class InputDevice:
+	TYPE_MOUSE, TYPE_TOUCHPAD = 1, 2
+
+	ACCEL_PROFILES = {
+		2: 'Adaptive',
+		1: 'Flat'
+	}
+	CLICK_METHODS = {
+		2: 'Buttonareas',
+		1: 'Clickfinger'
+	}
+	SCROLL_METHODS = {
+		4: 'Two-finger',
+		2: 'Edge',
+		1: 'Button',
+		0: 'Mouse wheel'
+	}
+	TAPPING_MAPPINGS = {
+		2: 'Left, right, middle',
+		1: 'Left, middle, right'
+	}
+	MOUSE_BUTTONS = {
+		1: 'Left',
+		2: 'Middle',
+		3: 'Right'
+	}
+	def __init__(self, name, devid, devtype):
+		self.devid	 = devid
+		self.name	 = name
+		self.devtype = devtype
+		self.prop	 = [None] * Prop.N_XINPUT_PROP_IDS
+
+		self.init_pointer_dev()
+
+	def init_pointer_dev(self):
+		proplist = xinput_get_props(self.devid)
+		for p in proplist:
+			if p['name'] not in vartable:
+				continue
+			ti = vartable[p['name']]
+			if ti.is_default:
+				continue
+			default = None
+			if ti.default_key != None:
+				for dp in proplist:
+					if dp['name'] == ti.default_key:
+						default = dp['value']
+						break
+			if p['name'] == 'libinput Tapping Enabled':
+				self.devtype |= self.TYPE_TOUCHPAD
+			self.prop[ti.varid] = xinput_var_to_prop(
+				p['name'],
+				p['value'],
+				ti.vartype,
+				default,
+				ti.mutable
+			)
+	def prop_to_cmd(self, prop):
+		cmd = "{} set-prop '{}' '{}'".format(
+			PATH_XINPUT,
+			self.name,
+			prop.varname
+		)
+		if prop.vartype == Prop.TYPE_BOOL:
+			cmd += ' {}'.format(int(prop.val))
+		elif prop.vartype == Prop.TYPE_VEC:
+			cmd += ' {}'.format(prop.to_bitlist())
+		elif prop.vartype == Prop.TYPE_FLOAT:
+			cmd += ' {}'.format(round(prop.val, 4))
+		else:
+			cmd += ' {}'.format(prop.val)
+		return cmd
+
+	def accel_profile_to_name(self, val):
+		return self.ACCEL_PROFILES[val]
+
+	def accel_profiles_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.ACCEL_PROFILES)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.ACCEL_PROFILES[(1 << i)] })
+		return v
+
+	def click_method_to_name(self, val):
+		return self.CLICK_METHODS[val]
+
+	def click_methods_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.CLICK_METHODS)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.CLICK_METHODS[(1 << i)] })
+		return v
+
+	def scroll_method_to_name(self, val):
+		return self.SCROLL_METHODS[val]
+
+	def scroll_methods_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.SCROLL_METHODS)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.SCROLL_METHODS[(1 << i)] })
+		if not (self.devtype & self.TYPE_TOUCHPAD):
+			v.update({ 0: self.SCROLL_METHODS[0] })
+		return v
+
+	def tapping_mapping_to_name(self, val):
+		return self.TAPPING_MAPPINGS[val]
+
+	def tapping_mappings_avail(self):
+		return self.TAPPING_MAPPINGS
+
+	def apply_setting(self, prop_id):
+		cmd = self.prop_to_cmd(self.prop[prop_id])
+		print(cmd)
+		return (os.system(cmd))
+
+def save_settings(devices):
+	path   = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, PATH_CFGFILE)
+	cfgdir = os.path.dirname(path)
+
+	if not os.path.exists(cfgdir):
+		try:
+			os.makedirs(cfgdir, mode=0o700)
+		except OSError as err:
+			xerrx(
+				None,
+				1,
+				__app.tr('Fatal error'),
+				__app.tr('Couldn\'t create {}: {}')
+					.format(cfgdir, err.strerror)
+			)
+	lines = []
+	for d in devices:
+		if not d.prop[Prop.ENABLED].val:
+			lines.append(d.prop_to_cmd(d.prop[Prop.ENABLED]))
+			continue
+		for p in d.prop:
+			if p == None or not p.mutable:
+				continue
+			if p.default == None or p.default != p.val:
+				lines.append(d.prop_to_cmd(p))
+	try:
+		f = open(path, 'w', encoding='utf-8')
+	except OSError as err:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Couldn\'t open {} for writing: {}')
+				.format(path, err.strerror)
+		)
+	for l in lines:
+		f.write('{}\n'.format(l))
+	f.close()
+	mode = os.stat(path).st_mode|stat.S_IRWXU
+	os.chmod(path, mode)
+
+def create_checkbox(name, val):
+	cb = QCheckBox(name)
+	cb.setTristate(False)
+	cb.setChecked(val)
+	return cb
+
+def xerrx(parent, error, title, msg):
+	QMessageBox().critical(parent, title, msg)
+	sys.exit(error)
+
+##############################################################################
+#
+# Widget to show the device specific configuration elements
+#
+###
+class DevsWidget(QWidget):
+	def __init__(self, devices, parent = None):
+		super(DevsWidget, self).__init__(parent)
+		form			   = QFormLayout()
+		layout			   = QVBoxLayout()
+		self.pic		   = QLabel()
+		self.scroll_area   = QScrollArea()
+		self.mouse_icon    = QIcon.fromTheme('input-mouse')
+		self.touchpad_icon = QIcon.fromTheme('input-touchpad')
+		self.cur_device	   = devices[0]
+		self.dev_cbb	   = self.create_dev_cbb(devices)
+		self.set_pic()
+		form.addRow(QLabel(self.tr('Device:')), self.dev_cbb)
+		self.enable_cb = create_checkbox(
+			self.tr('Enable device'),
+			self.cur_device.prop[Prop.ENABLED].val
+		)
+		self.enable_cb.stateChanged.connect(self.enable_device_changed)
+		layout.addWidget(self.pic, 0, Qt.AlignLeft)
+		layout.addLayout(form)
+		layout.addWidget(self.enable_cb)
+		layout.addWidget(self.scroll_area)
+		self.create_config_elements()
+
+		self.setLayout(layout)
+
+	def create_dev_cbb(self, devices):
+		self.device_cbb = QComboBox()
+		index = 0
+		for d in devices:
+			self.device_cbb.addItem(d.name)
+			self.device_cbb.setItemData(index, d)
+			index += 1
+		self.device_cbb.currentIndexChanged.connect(self.device_changed)
+		return self.device_cbb
+
+	def device_changed(self, index):
+		self.cur_device = self.device_cbb.currentData()
+		self.enable_cb.stateChanged.disconnect()
+		self.enable_cb.setChecked(self.cur_device.prop[Prop.ENABLED].val)
+		self.enable_cb.stateChanged.connect(self.enable_device_changed)
+
+		self.set_pic()
+		self.create_config_elements()
+
+	def enable_device_changed(self, state):
+		if state == Qt.Checked:
+			self.scroll_area.setDisabled(False)
+		else:
+			self.scroll_area.setDisabled(True)
+		self.cur_device.prop[Prop.ENABLED].val = bool(state)
+		self.cur_device.apply_setting(Prop.ENABLED)
+
+	def set_pic(self):
+		icon = self.mouse_icon
+		if (self.cur_device.devtype & InputDevice.TYPE_TOUCHPAD):
+			icon = self.touchpad_icon
+		self.pic.setPixmap(icon.pixmap(64, 64))
+
+	def create_config_elements(self):
+		# Destroy previous content container by setting its parent to None
+		if self.scroll_area.widget() != None:
+			self.scroll_area.widget().setParent(None)
+		self.scroll_area.setWidgetResizable(True)
+		container = QWidget()
+		layout = QVBoxLayout(container)
+		if self.cur_device.prop[Prop.LEFT_HANDED] != None:
+			layout.addWidget(self.create_left_handed_cb())
+		layout.addWidget(self.create_scroll_method_box())
+		if (self.cur_device.devtype & InputDevice.TYPE_TOUCHPAD):
+			layout.addWidget(self.create_tapping_box())
+		layout.addWidget(self.create_accel_box())
+		self.scroll_area.setDisabled(
+			not self.cur_device.prop[Prop.ENABLED].val
+		)
+		layout.addStretch(1)
+		self.scroll_area.setWidget(container)
+
+	##########################################################################
+	#
+	# Handedness configuration box
+	#
+	###
+	def create_left_handed_cb(self):
+		box    = QGroupBox(self.tr('Handedness'))
+		layout = QVBoxLayout()
+		self.left_handed_cb = create_checkbox(
+			self.tr('Left handed'),
+			self.cur_device.prop[Prop.LEFT_HANDED].val
+		)
+		self.left_handed_cb.stateChanged.connect(
+			self.left_handed_changed
+		)
+		layout.addWidget(self.left_handed_cb)
+		box.setLayout(layout)
+		return box
+
+	def left_handed_changed(self, state):
+		self.cur_device.prop[Prop.LEFT_HANDED].val = bool(state)
+		self.cur_device.apply_setting(Prop.LEFT_HANDED)
+
+	##########################################################################
+	#
+	# Scrolling configuration box
+	#
+	###
+	def create_scroll_method_box(self):
+		_ = [
+				self.tr('Button'),
+				self.tr('Edge'),
+				self.tr('Two-finger'),
+				self.tr('Mouse wheel'),
+				self.tr('Left'),
+				self.tr('Middle'),
+				self.tr('Right')
+		]
+		box    = QGroupBox(self.tr('Scrolling'))
+		form   = QFormLayout()
+		layout = QVBoxLayout()
+		self.scroll_method_cbb = QComboBox()
+
+		if self.cur_device.prop[Prop.SCROLL_METHODS_AVAIL] != None:
+			methods = self.cur_device.scroll_methods_avail_to_names(
+				self.cur_device.prop[Prop.SCROLL_METHODS_AVAIL].val
+			)
+			index = 0
+			for k in methods.keys():
+				self.scroll_method_cbb.addItem(self.tr(methods[k]))
+				self.scroll_method_cbb.setItemData(index, k)
+				if k == self.cur_device.prop[Prop.SCROLL_METHOD].val:
+					self.scroll_method_cbb.setCurrentIndex(index)
+				index += 1
+			form.addRow(
+				QLabel(self.tr('Scroll method')),
+				self.scroll_method_cbb
+			)
+			layout.addLayout(form)
+			self.scroll_method_cbb.currentIndexChanged.connect(
+				self.scroll_method_changed
+			)
+			if self.cur_device.prop[Prop.SCROLL_BUTTON] != None:
+				self.scroll_button_cbb = QComboBox()
+				index = 0
+				for k in InputDevice.MOUSE_BUTTONS.keys():
+					self.scroll_button_cbb.addItem(
+						self.tr(InputDevice.MOUSE_BUTTONS[k])
+					)
+					self.scroll_button_cbb.setItemData(index, k)
+					if k == self.cur_device.prop[Prop.SCROLL_BUTTON].val:
+						self.scroll_button_cbb.setCurrentIndex(index)
+					index += 1
+				form.addRow(
+					QLabel(self.tr('Scroll button')),
+					self.scroll_button_cbb
+				)
+				#
+				# Disable scroll button combobox if scroll method is
+				# not set to button scrolling
+				#
+				if self.cur_device.prop[Prop.SCROLL_METHOD].val != 1:
+					self.scroll_button_cbb.setDisabled(True)
+				self.scroll_button_cbb.currentIndexChanged.connect(
+					self.scroll_button_changed
+				)
+		if self.cur_device.prop[Prop.NATURAL_SCROLLING] != None:
+			self.natural_scrolling_cb = create_checkbox(
+				self.tr('Natural scrolling'),
+				self.cur_device.prop[Prop.NATURAL_SCROLLING].val
+			)
+			layout.addWidget(self.natural_scrolling_cb)
+			self.natural_scrolling_cb.stateChanged.connect(
+				self.natural_scrolling_changed
+			)
+		if self.cur_device.prop[Prop.HORIZ_SCROLLING] != None:
+			self.horizontal_scrolling_cb = create_checkbox(
+				self.tr('Horizontal scrolling'),
+				self.cur_device.prop[Prop.HORIZ_SCROLLING].val
+			)
+			layout.addWidget(self.horizontal_scrolling_cb)
+			self.horizontal_scrolling_cb.stateChanged.connect(
+				self.horizontal_scrolling_changed
+			)
+		box.setLayout(layout)
+		return box
+
+	def scroll_method_changed(self, index):
+		self.cur_device.prop[Prop.SCROLL_METHOD].val = \
+			self.scroll_method_cbb.currentData()
+		if self.cur_device.prop[Prop.SCROLL_BUTTON] != None:
+			#
+			# Disable scroll button combobox if scroll method is
+			# not set to button scrolling
+			#
+			if self.cur_device.prop[Prop.SCROLL_METHOD].val != 1:
+				self.scroll_button_cbb.setDisabled(True)
+			else:
+				self.scroll_button_cbb.setDisabled(False)
+		self.cur_device.apply_setting(Prop.SCROLL_METHOD)
+
+	def scroll_button_changed(self, index):
+		self.cur_device.prop[Prop.SCROLL_BUTTON].val = \
+			self.scroll_button_cbb.currentData()
+		self.cur_device.apply_setting(Prop.SCROLL_BUTTON)
+
+	def natural_scrolling_changed(self, state):
+		self.cur_device.prop[Prop.NATURAL_SCROLLING].val = bool(state)
+		self.cur_device.apply_setting(Prop.NATURAL_SCROLLING)
+
+	def horizontal_scrolling_changed(self, state):
+		self.cur_device.prop[Prop.HORIZ_SCROLLING].val = bool(state)
+		self.cur_device.apply_setting(Prop.HORIZ_SCROLLING)
+
+	##########################################################################
+	#
+	# Tapping configuration box
+	#
+	###
+	def create_tapping_box(self):
+		_ = [
+				self.tr('Left, right, middle'),
+				self.tr('Left, middle, right')
+		]
+		box    = QGroupBox(self.tr('Tapping'))
+		layout = QVBoxLayout()
+
+		if self.cur_device.prop[Prop.TAPPING] != None:
+			self.enable_tapping_cb = create_checkbox(
+				self.tr('Enable tapping'),
+				self.cur_device.prop[Prop.TAPPING].val
+			)
+			layout.addWidget(self.enable_tapping_cb)
+			self.enable_tapping_cb.stateChanged.connect(
+				self.enable_tapping_changed
+			)
+		if self.cur_device.prop[Prop.TAPPING_DRAG_LOCK] != None:
+			self.tapping_drag_lock_cb = create_checkbox(
+				self.tr('Tapping drag lock'),
+				self.cur_device.prop[Prop.TAPPING_DRAG_LOCK].val
+			)
+			layout.addWidget(self.tapping_drag_lock_cb)
+			self.tapping_drag_lock_cb.stateChanged.connect(
+				self.tapping_drag_lock_changed
+			)
+		if self.cur_device.prop[Prop.DISABLE_WHILE_TYPING] != None:
+			self.disable_while_typing_cb = create_checkbox(
+				self.tr('Disable while typing'),
+				self.cur_device.prop[Prop.DISABLE_WHILE_TYPING].val
+			)
+			layout.addWidget(self.disable_while_typing_cb)
+			self.disable_while_typing_cb.stateChanged.connect(
+				self.disable_while_typing_changed
+			)
+		mappings = self.cur_device.tapping_mappings_avail()
+		if self.cur_device.prop[Prop.TAPPING_BUTTON_MAPPING] != None:
+			index = 0
+			form  = QFormLayout()
+			self.tapping_button_mapping_cbb = QComboBox()
+			for k in mappings.keys():
+				self.tapping_button_mapping_cbb.addItem(mappings[k])
+				self.tapping_button_mapping_cbb.setItemData(index, k)
+				if k == self.cur_device.prop[Prop.TAPPING_BUTTON_MAPPING].val:
+					self.tapping_button_mapping_cbb.setCurrentIndex(index)
+				index += 1
+			form.addRow(
+				QLabel(self.tr('Tapping button mapping')),
+				self.tapping_button_mapping_cbb
+			)
+			layout.addLayout(form)
+			self.tapping_button_mapping_cbb.currentIndexChanged.connect(
+				self.tapping_button_mapping_changed
+			)
+		box.setLayout(layout)
+		return box
+
+	def enable_tapping_changed(self, state):
+		self.cur_device.prop[Prop.TAPPING].val = bool(state)
+		self.cur_device.apply_setting(Prop.TAPPING)
+
+	def tapping_drag_lock_changed(self, state):
+		self.cur_device.prop[Prop.TAPPING_DRAG_LOCK].val = bool(state)
+		self.cur_device.apply_setting(Prop.TAPPING_DRAG_LOCK)
+
+	def disable_while_typing_changed(self, state):
+		self.cur_device.prop[Prop.DISABLE_WHILE_TYPING].val = bool(state)
+		self.cur_device.apply_setting(Prop.DISABLE_WHILE_TYPING)
+
+	def tapping_button_mapping_changed(self, index):
+		self.cur_device.prop[Prop.TAPPING_BUTTON_MAPPING].val = \
+			self.tapping_button_mapping_cbb.currentData()
+		self.cur_device.apply_setting(Prop.TAPPING_BUTTON_MAPPING)
+
+	##########################################################################
+	#
+	# Acceleration config box
+	#
+	###
+	def create_accel_box(self):
+		_ = [
+			self.tr('Adaptive'),
+			self.tr('Flat')
+		]
+		box	   = QGroupBox(self.tr('Acceleration'))
+		form   = QFormLayout()
+		layout = QVBoxLayout()
+
+		if self.cur_device.prop[Prop.ACCEL_PROFILES_AVAIL] != None:
+			self.accel_profile_cbb = QComboBox()
+			index = 0
+			profiles = self.cur_device.accel_profiles_avail_to_names(
+				self.cur_device.prop[Prop.ACCEL_PROFILES_AVAIL].val
+			)
+			for k in profiles.keys():
+				self.accel_profile_cbb.addItem(self.tr(profiles[k]))
+				self.accel_profile_cbb.setItemData(index, k)
+				if k == self.cur_device.prop[Prop.ACCEL_PROFILE].val:
+					self.accel_profile_cbb.setCurrentIndex(index)
+				index += 1
+			form.addRow(
+				self.tr('Accel profile'),
+				self.accel_profile_cbb
+			)
+			self.accel_profile_cbb.currentIndexChanged.connect(
+				self.accel_profile_changed
+			)
+		if self.cur_device.prop[Prop.ACCEL_SPEED] != None:
+			self.accel_speed_sb = QDoubleSpinBox()
+			self.accel_speed_sb.setMinimum(-1)
+			self.accel_speed_sb.setMaximum(1)
+			self.accel_speed_sb.setSingleStep(0.01)
+			self.accel_speed_sb.setDecimals(3)
+			self.accel_speed_sb.setValue(
+				self.cur_device.prop[Prop.ACCEL_SPEED].val
+			)
+			form.addRow(
+				self.tr('Accel speed'),
+				self.accel_speed_sb
+			)
+			self.accel_speed_sb.valueChanged.connect(
+				self.accel_speed_changed
+			)
+		layout.addLayout(form)
+		box.setLayout(layout)
+		return box
+
+	def accel_profile_changed(self, index):
+		self.cur_device.prop[Prop.ACCEL_PROFILE].val = \
+			self.accel_profile_cbb.currentData()
+		self.cur_device.apply_setting(Prop.ACCEL_PROFILE)
+
+	def accel_speed_changed(self, val):
+		self.cur_device.prop[Prop.ACCEL_SPEED].val = val
+		self.cur_device.apply_setting(Prop.ACCEL_SPEED)
+
+class MainWindow(QMainWindow):
+	def __init__(self, *args, **kwargs):
+		super(MainWindow, self).__init__(*args, **kwargs)
+		container = QWidget()
+		layout	  = QVBoxLayout(container)
+		self.statusBar().showMessage('', 1)
+		self.statusBar().setSizeGripEnabled(True) 
+		self.setWindowIcon(QIcon.fromTheme('input-mouse'))
+		self.setWindowTitle(WINDOW_TITLE)
+		self.setContentsMargins(10, 1, 10, 1)
+
+		self.devlist = []
+		xinput_devs = xinput_get_devlist('pointer')
+		for d in xinput_devs:
+			dev = InputDevice(d['name'], d['id'], InputDevice.TYPE_MOUSE)
+			self.devlist.append(dev)
+		layout.addWidget(DevsWidget(self.devlist, self))
+		save_pb_icon = QIcon.fromTheme('document-save')
+		quit_pb_icon = QIcon.fromTheme('gtk-quit')
+		save_pb = QPushButton(save_pb_icon, self.tr('&Save'))
+		quit_pb = QPushButton(quit_pb_icon, self.tr('&Quit'))
+		pb_box  = QHBoxLayout()
+		pb_box.addWidget(save_pb, 1, Qt.AlignRight)
+		pb_box.addWidget(quit_pb, 0, Qt.AlignRight)
+		save_pb.clicked.connect(self.save_clicked)
+		quit_pb.clicked.connect(self.quit)
+		layout.addLayout(pb_box)
+		self.setCentralWidget(container)
+
+	def save_clicked(self):
+		save_settings(self.devlist)
+		self.statusBar().showMessage(self.tr('Saved'), 2000)
+
+	def quit(self):
+		sys.exit(0)
+
+def main():
+	global __app
+	__app = QApplication(sys.argv)
+	QCoreApplication.setApplicationName(PROGRAM)
+	os.environ['RESOURCE_NAME'] = PROGRAM
+	translator = QTranslator()
+	if (translator.load(QLocale(), PROGRAM, '_', LOCALE_PATH)):
+		__app.installTranslator(translator)
+	if not os.path.exists(PATH_XINPUT):
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('xinput is not installed. Please install x11/xinput')
+		)
+	win = MainWindow()
+	win.show()
+	sys.exit(__app.exec_())
+
+if __name__ == '__main__':
+	main()
