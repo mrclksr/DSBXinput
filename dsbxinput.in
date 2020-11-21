@@ -33,7 +33,6 @@ PROGRAM		 = '@PROGRAM@'
 LOCALE_PATH	 = '@LOCALE_PATH@'
 PATH_XINPUT	 = '@PREFIX@/bin/xinput'
 PATH_CFGFILE = '.config/DSB/@PROGRAM@.sh'
-WINDOW_TITLE = 'Configure pointer devices'
 
 __app = None
 
@@ -990,7 +989,7 @@ class MainWindow(QMainWindow):
 		self.statusBar().showMessage('', 1)
 		self.statusBar().setSizeGripEnabled(True) 
 		self.setWindowIcon(QIcon.fromTheme('input-mouse'))
-		self.setWindowTitle(WINDOW_TITLE)
+		self.setWindowTitle(self.tr('Mouse and Touchpad Configuration'))
 		self.setContentsMargins(10, 1, 10, 1)
 
 		self.devlist = []
