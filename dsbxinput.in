@@ -462,6 +462,32 @@ def xinput_get_props(devid):
 		)
 	return props
 
+def create_dir(path, mode=0o700):
+	if not os.path.exists(path):
+		try:
+			os.makedirs(path, mode)
+		except OSError as err:
+			xerrx(
+				None,
+				1,
+				__app.tr('Fatal error'),
+				__app.tr('Couldn\'t create {}: {}')
+					.format(path, err.strerror)
+			)
+
+def create_file(path):
+	try:
+		f = open(path, 'w', encoding='utf-8')
+	except OSError as err:
+		xerrx(
+			None,
+			1,
+			__app.tr('Fatal error'),
+			__app.tr('Couldn\'t open {} for writing: {}')
+				.format(path, err.strerror)
+		)
+	return f
+
 class InputDevice:
 	TYPE_MOUSE, TYPE_TOUCHPAD = 1, 2
 
@@ -579,21 +605,8 @@ class InputDevice:
 		return (os.system(cmd))
 
 def save_settings(devices):
-	path   = os.path.join(pwd.getpwuid(os.getuid()).pw_dir, PATH_CFGFILE)
-	cfgdir = os.path.dirname(path)
-
-	if not os.path.exists(cfgdir):
-		try:
-			os.makedirs(cfgdir, mode=0o700)
-		except OSError as err:
-			xerrx(
-				None,
-				1,
-				__app.tr('Fatal error'),
-				__app.tr('Couldn\'t create {}: {}')
-					.format(cfgdir, err.strerror)
-			)
-	lines = []
+	cfgdir = os.path.dirname(PATH_CFGFILE)
+	lines  = []
 	for d in devices:
 		if not d.prop[Prop.ENABLED].val:
 			lines.append(d.prop_to_cmd(d.prop[Prop.ENABLED]))
@@ -603,21 +616,30 @@ def save_settings(devices):
 				continue
 			if p.default == None or p.default != p.val:
 				lines.append(d.prop_to_cmd(p))
-	try:
-		f = open(path, 'w', encoding='utf-8')
-	except OSError as err:
-		xerrx(
-			None,
-			1,
-			__app.tr('Fatal error'),
-			__app.tr('Couldn\'t open {} for writing: {}')
-				.format(path, err.strerror)
-		)
+	create_dir(cfgdir)
+	f = create_file(PATH_CFGFILE)
 	for l in lines:
 		f.write('{}\n'.format(l))
 	f.close()
-	mode = os.stat(path).st_mode|stat.S_IRWXU
-	os.chmod(path, mode)
+	mode = os.stat(PATH_CFGFILE).st_mode|stat.S_IRWXU
+	os.chmod(PATH_CFGFILE, mode)
+	write_autostart_file()
+
+def write_autostart_file():
+	desktop_file = [
+		'[Desktop Entry]',
+		'Type=Application',
+		'Name=Autostart dsbxinput.sh',
+		'Exec=sh -c "{}"'.format(PATH_CFGFILE),
+		'Hidden=false',
+		'Terminal=false'
+	]
+	cfgdir = os.path.dirname(PATH_AUTOSTART)
+	create_dir(cfgdir)
+	f = create_file(PATH_AUTOSTART)
+	for l in desktop_file:
+		f.write('{}\n'.format(l))
+	f.close()
 
 def create_checkbox(name, val):
 	cb = QCheckBox(name)
