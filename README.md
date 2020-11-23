@@ -19,6 +19,8 @@ DSBXinput is a graphical tool which uses *xinput* to configure pointing devices.
 ### Setup
 
 DSBXinput saves the current mouse/touchpad configuration in the executable
-shell script `~/.config/DSB/dsbxinput.sh`. Make sure it gets executed on
+shell script `~/.config/DSB/dsbxinput.sh`. If your window manager or desktop
+environment does not support XDG autostart, make sure it gets executed on
 session start by adding the line `~/.config/DSB/dsbxinput.sh&` to your
 `~/.xinitrc`, `~/.xsession`, or your window manager's autostart file.
+
