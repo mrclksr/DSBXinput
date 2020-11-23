@@ -110,6 +110,122 @@ class Prop:
 				bits.append('0')
 		return ' '.join(bits)
 
+class InputDevice:
+	TYPE_MOUSE, TYPE_TOUCHPAD = 1, 2
+
+	ACCEL_PROFILES = {
+		2: 'Adaptive',
+		1: 'Flat'
+	}
+	CLICK_METHODS = {
+		2: 'Buttonareas',
+		1: 'Clickfinger'
+	}
+	SCROLL_METHODS = {
+		4: 'Two-finger',
+		2: 'Edge',
+		1: 'Button',
+		0: 'Mouse wheel'
+	}
+	TAPPING_MAPPINGS = {
+		2: 'Left, right, middle',
+		1: 'Left, middle, right'
+	}
+	MOUSE_BUTTONS = {
+		1: 'Left',
+		2: 'Middle',
+		3: 'Right'
+	}
+	def __init__(self, name, devid, devtype):
+		self.devid	 = devid
+		self.name	 = name
+		self.devtype = devtype
+		self.prop	 = [None] * Prop.N_XINPUT_PROP_IDS
+
+		self.init_pointer_dev()
+
+	def init_pointer_dev(self):
+		proplist = xinput_get_props(self.devid)
+		for p in proplist:
+			if p['name'] not in vartable:
+				continue
+			ti = vartable[p['name']]
+			if ti.is_default:
+				continue
+			default = None
+			if ti.default_key != None:
+				for dp in proplist:
+					if dp['name'] == ti.default_key:
+						default = dp['value']
+						break
+			if p['name'] == 'libinput Tapping Enabled':
+				self.devtype |= self.TYPE_TOUCHPAD
+			self.prop[ti.varid] = xinput_var_to_prop(
+				p['name'],
+				p['value'],
+				ti.vartype,
+				default,
+				ti.mutable
+			)
+	def prop_to_cmd(self, prop):
+		cmd = "{} set-prop '{}' '{}'".format(
+			PATH_XINPUT,
+			self.name,
+			prop.varname
+		)
+		if prop.vartype == Prop.TYPE_BOOL:
+			cmd += ' {}'.format(int(prop.val))
+		elif prop.vartype == Prop.TYPE_VEC:
+			cmd += ' {}'.format(prop.to_bitlist())
+		elif prop.vartype == Prop.TYPE_FLOAT:
+			cmd += ' {}'.format(round(prop.val, 4))
+		else:
+			cmd += ' {}'.format(prop.val)
+		return cmd
+
+	def accel_profile_to_name(self, val):
+		return self.ACCEL_PROFILES[val]
+
+	def accel_profiles_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.ACCEL_PROFILES)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.ACCEL_PROFILES[(1 << i)] })
+		return v
+
+	def click_method_to_name(self, val):
+		return self.CLICK_METHODS[val]
+
+	def click_methods_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.CLICK_METHODS)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.CLICK_METHODS[(1 << i)] })
+		return v
+
+	def scroll_method_to_name(self, val):
+		return self.SCROLL_METHODS[val]
+
+	def scroll_methods_avail_to_names(self, mask):
+		v = {}
+		for i in range(0, len(self.SCROLL_METHODS)):
+			if ((1 << i) & mask):
+				v.update({ (1 << i): self.SCROLL_METHODS[(1 << i)] })
+		if not (self.devtype & self.TYPE_TOUCHPAD):
+			v.update({ 0: self.SCROLL_METHODS[0] })
+		return v
+
+	def tapping_mapping_to_name(self, val):
+		return self.TAPPING_MAPPINGS[val]
+
+	def tapping_mappings_avail(self):
+		return self.TAPPING_MAPPINGS
+
+	def apply_setting(self, prop_id):
+		cmd = self.prop_to_cmd(self.prop[prop_id])
+		print(cmd)
+		return (os.system(cmd))
+
 class VarTblItem:
 	def __init__(self, varid, default_key, vartype,
 				 is_default = False, mutable = True):
@@ -125,7 +241,7 @@ class VarTblItem:
 
 	@classmethod
 	def defaultvar(self, vartype):
-		return VarTblItem.constvar(None, vartype, True)
+		return VarTblItem.constvar(None, vartype, is_default=True)
 
 vartable = {
 	'Device Enabled':
@@ -427,121 +543,6 @@ def create_file(path):
 		)
 	return f
 
-class InputDevice:
-	TYPE_MOUSE, TYPE_TOUCHPAD = 1, 2
-
-	ACCEL_PROFILES = {
-		2: 'Adaptive',
-		1: 'Flat'
-	}
-	CLICK_METHODS = {
-		2: 'Buttonareas',
-		1: 'Clickfinger'
-	}
-	SCROLL_METHODS = {
-		4: 'Two-finger',
-		2: 'Edge',
-		1: 'Button',
-		0: 'Mouse wheel'
-	}
-	TAPPING_MAPPINGS = {
-		2: 'Left, right, middle',
-		1: 'Left, middle, right'
-	}
-	MOUSE_BUTTONS = {
-		1: 'Left',
-		2: 'Middle',
-		3: 'Right'
-	}
-	def __init__(self, name, devid, devtype):
-		self.devid	 = devid
-		self.name	 = name
-		self.devtype = devtype
-		self.prop	 = [None] * Prop.N_XINPUT_PROP_IDS
-
-		self.init_pointer_dev()
-
-	def init_pointer_dev(self):
-		proplist = xinput_get_props(self.devid)
-		for p in proplist:
-			if p['name'] not in vartable:
-				continue
-			ti = vartable[p['name']]
-			if ti.is_default:
-				continue
-			default = None
-			if ti.default_key != None:
-				for dp in proplist:
-					if dp['name'] == ti.default_key:
-						default = dp['value']
-						break
-			if p['name'] == 'libinput Tapping Enabled':
-				self.devtype |= self.TYPE_TOUCHPAD
-			self.prop[ti.varid] = xinput_var_to_prop(
-				p['name'],
-				p['value'],
-				ti.vartype,
-				default,
-				ti.mutable
-			)
-	def prop_to_cmd(self, prop):
-		cmd = "{} set-prop '{}' '{}'".format(
-			PATH_XINPUT,
-			self.name,
-			prop.varname
-		)
-		if prop.vartype == Prop.TYPE_BOOL:
-			cmd += ' {}'.format(int(prop.val))
-		elif prop.vartype == Prop.TYPE_VEC:
-			cmd += ' {}'.format(prop.to_bitlist())
-		elif prop.vartype == Prop.TYPE_FLOAT:
-			cmd += ' {}'.format(round(prop.val, 4))
-		else:
-			cmd += ' {}'.format(prop.val)
-		return cmd
-
-	def accel_profile_to_name(self, val):
-		return self.ACCEL_PROFILES[val]
-
-	def accel_profiles_avail_to_names(self, mask):
-		v = {}
-		for i in range(0, len(self.ACCEL_PROFILES)):
-			if ((1 << i) & mask):
-				v.update({ (1 << i): self.ACCEL_PROFILES[(1 << i)] })
-		return v
-
-	def click_method_to_name(self, val):
-		return self.CLICK_METHODS[val]
-
-	def click_methods_avail_to_names(self, mask):
-		v = {}
-		for i in range(0, len(self.CLICK_METHODS)):
-			if ((1 << i) & mask):
-				v.update({ (1 << i): self.CLICK_METHODS[(1 << i)] })
-		return v
-
-	def scroll_method_to_name(self, val):
-		return self.SCROLL_METHODS[val]
-
-	def scroll_methods_avail_to_names(self, mask):
-		v = {}
-		for i in range(0, len(self.SCROLL_METHODS)):
-			if ((1 << i) & mask):
-				v.update({ (1 << i): self.SCROLL_METHODS[(1 << i)] })
-		if not (self.devtype & self.TYPE_TOUCHPAD):
-			v.update({ 0: self.SCROLL_METHODS[0] })
-		return v
-
-	def tapping_mapping_to_name(self, val):
-		return self.TAPPING_MAPPINGS[val]
-
-	def tapping_mappings_avail(self):
-		return self.TAPPING_MAPPINGS
-
-	def apply_setting(self, prop_id):
-		cmd = self.prop_to_cmd(self.prop[prop_id])
-		print(cmd)
-		return (os.system(cmd))
 
 def save_settings(devices):
 	cfgdir = os.path.dirname(PATH_CFGFILE)
