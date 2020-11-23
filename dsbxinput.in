@@ -114,147 +114,110 @@ class VarTblItem:
 	def __init__(self, varid, default_key, vartype,
 				 is_default = False, mutable = True):
 		self.varid		= varid
-		self.default_key = default_key
+		self.default_key= default_key
 		self.vartype	= vartype
 		self.is_default	= is_default
 		self.mutable	= mutable
+
+	@classmethod
+	def constvar(self, varid, vartype, is_default=False):
+		return VarTblItem(varid, None, vartype, is_default, mutable=False)
+
+	@classmethod
+	def defaultvar(self, vartype):
+		return VarTblItem.constvar(None, vartype, True)
 
 vartable = {
 	'Device Enabled':
 		VarTblItem(
 			varid		= Prop.ENABLED,
 			default_key = None,
-			vartype     = Prop.TYPE_BOOL,
-			is_default  = False
+			vartype     = Prop.TYPE_BOOL
 		),
 	'libinput Accel Profiles Available':
-		VarTblItem(
+		VarTblItem.constvar(
 			varid		= Prop.ACCEL_PROFILES_AVAIL,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False,
-			mutable		= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Accel Profile Enabled':
 		VarTblItem(
 			varid		= Prop.ACCEL_PROFILE,
 			default_key	= 'libinput Accel Profile Enabled Default',
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Accel Profile Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Accel Speed':
 		VarTblItem(
 			varid		= Prop.ACCEL_SPEED,
 			default_key = 'libinput Accel Speed Default',
-			vartype		= Prop.TYPE_FLOAT,
-			is_default	= False
+			vartype		= Prop.TYPE_FLOAT
 		),
 	'libinput Accel Speed Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_FLOAT,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_FLOAT
 		),
 	'libinput Click Methods Available':
-		VarTblItem(
+		VarTblItem.constvar(
 			varid		= Prop.CLICK_METHODS_AVAIL,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False,
-			mutable		= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Click Method Enabled':
 		VarTblItem(
 			varid		= Prop.CLICK_METHOD,
 			default_key	= 'libinput Click Method Enabled Default',
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Click Method Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Horizontal Scroll Enabled':
 		VarTblItem(
 			varid		= Prop.HORIZ_SCROLLING,
 			default_key	= 'libinput Horizontal Scroll Enabled Default',
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= False
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Horizontal Scroll Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Left Handed Enabled':
 		VarTblItem(
 			varid		= Prop.LEFT_HANDED,
 			default_key	= 'libinput Left Handed Enabled Default',
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= False
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Left Handed Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Natural Scrolling Enabled':
 		VarTblItem(
 			varid		= Prop.NATURAL_SCROLLING,
 			default_key	= 'libinput Natural Scrolling Enabled Default',
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= False
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Natural Scrolling Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Scroll Methods Available':
-		VarTblItem(
+		VarTblItem.constvar(
 			varid		= Prop.SCROLL_METHODS_AVAIL,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False,
-			mutable		= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Scroll Method Enabled':
 		VarTblItem(
 			varid		= Prop.SCROLL_METHOD,
 			default_key	= 'libinput Scroll Method Enabled Default',
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Scroll Method Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Tapping Enabled':
 		VarTblItem(
@@ -263,72 +226,48 @@ vartable = {
 			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Tapping Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Tapping Button Mapping Enabled':
 		VarTblItem(
 			varid		= Prop.TAPPING_BUTTON_MAPPING,
 			default_key	= 'libinput Tapping Button Mapping Enabled Default',
-			vartype		= Prop.TYPE_VEC,
-			is_default	= False
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Tapping Button Mapping Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_VEC,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_VEC
 		),
 	'libinput Disable While Typing Enabled':
 		VarTblItem(
 			varid		= Prop.DISABLE_WHILE_TYPING,
 			default_key	= 'libinput Disable While Typing Enabled Default',
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= False
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Disable While Typing Enabled Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Tapping Drag Lock Enabled':
 		VarTblItem(
 			varid		= Prop.TAPPING_DRAG_LOCK,
 			default_key	= 'libinput Tapping Drag Lock Enabled Default',
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= False
+			vartype		= Prop.TYPE_BOOL
 		),
    'libinput Tapping Drag Lock Enabled Default':
-	   	VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_BOOL,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_BOOL
 		),
 	'libinput Button Scrolling Button':
 		VarTblItem(
 			varid		= Prop.SCROLL_BUTTON,
 			default_key	= 'libinput Button Scrolling Button Default',
-			vartype		= Prop.TYPE_INT,
-			is_default	= False
+			vartype		= Prop.TYPE_INT
 		),
 	'libinput Button Scrolling Button Default':
-		VarTblItem(
-			varid		= None,
-			default_key	= None,
-			vartype		= Prop.TYPE_INT,
-			is_default	= True,
-			mutable		= False
+		VarTblItem.defaultvar(
+			vartype		= Prop.TYPE_INT
 		)
 }
 
