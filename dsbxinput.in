@@ -27,12 +27,18 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore	 import *
 from PyQt5.QtGui	 import *
 from subprocess		 import Popen, PIPE
-import os, re, sys, stat, pwd
+import os, re, sys, stat
 
-PROGRAM		 = '@PROGRAM@'
-LOCALE_PATH	 = '@LOCALE_PATH@'
-PATH_XINPUT	 = '@PREFIX@/bin/xinput'
-PATH_CFGFILE = '.config/DSB/@PROGRAM@.sh'
+if 'XDG_CONFIG_HOME' not in os.environ:
+	XDG_CONFIG_HOME = os.environ['HOME'] + '/.config'
+else:
+	XDG_CONFIG_HOME = os.environ['XDG_CONFIG_HOME']
+
+PROGRAM		   = '@PROGRAM@'
+LOCALE_PATH	   = '@LOCALE_PATH@'
+PATH_XINPUT	   = '@PREFIX@/bin/xinput'
+PATH_CFGFILE   = XDG_CONFIG_HOME + '/DSB/@PROGRAM@.sh'
+PATH_AUTOSTART = XDG_CONFIG_HOME + '/autostart/@PROGRAM@.desktop'
 
 __app = None
 
