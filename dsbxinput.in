@@ -39,6 +39,7 @@ LOCALE_PATH	   = '@LOCALE_PATH@'
 PATH_XINPUT	   = '@PREFIX@/bin/xinput'
 PATH_CFGFILE   = XDG_CONFIG_HOME + '/DSB/@PROGRAM@.sh'
 PATH_AUTOSTART = XDG_CONFIG_HOME + '/autostart/@PROGRAM@.desktop'
+PATH_NOMSG	   = XDG_CONFIG_HOME + '/DSB/@PROGRAM@.nomsg'
 
 __app = None
 
@@ -588,8 +589,40 @@ def create_checkbox(name, val):
 	return cb
 
 def xerrx(parent, error, title, msg):
-	QMessageBox().critical(parent, title, msg)
+	msgbox = QMessageBox()
+	icon = msgbox.style().standardIcon(QStyle.SP_MessageBoxCritical)
+	msgbox.setIcon(QMessageBox.Critical)
+	msgbox.setWindowIcon(icon)
+	msgbox.setWindowTitle(title)
+	msgbox.setContentsMargins(10, 1, 10, 1)
+	msgbox.setText('<b>{}</b><br/><br/>{}'.format(title, msg))
+	msgbox.exec()
 	sys.exit(error)
+
+def show_setup_msg():
+	msgbox = QMessageBox()
+	text = msgbox.tr(
+		'<b>Please note</b><br/><br/>'	\
+		'<em>{}</em> saves the current mouse/touchpad '				 \
+		'configuration in the executable shell script <em>{}</em>. ' \
+		'If your window manager or desktop environment does not '	 \
+		'support XDG autostart, make sure the script gets executed ' \
+		'on session start by adding the line <code>{}&</code> to '	 \
+		'your <em>~/.xinitrc</em>, <em>~/.xsession</em>, or your '	 \
+		'window manager\'s autostart file.'
+			.format(PROGRAM, PATH_CFGFILE, PATH_CFGFILE)
+	)
+	nomsgcb = create_checkbox(msgbox.tr('Do not show again'), False)
+	icon = msgbox.style().standardIcon(QStyle.SP_MessageBoxInformation)
+	msgbox.setIcon(QMessageBox.Information)
+	msgbox.setWindowIcon(icon)
+	msgbox.setWindowTitle(msgbox.tr('Please note'))
+	msgbox.setContentsMargins(10, 1, 10, 1)
+	msgbox.setText(text)
+	msgbox.setCheckBox(nomsgcb)
+	if msgbox.exec() == QMessageBox.Ok:
+		if nomsgcb.isChecked():
+			create_file(PATH_NOMSG).close()
 
 ##############################################################################
 #
@@ -993,6 +1026,8 @@ def main():
 	translator = QTranslator()
 	if (translator.load(QLocale(), PROGRAM, '_', LOCALE_PATH)):
 		__app.installTranslator(translator)
+	if not os.path.exists(PATH_NOMSG):
+		show_setup_msg()
 	if not os.path.exists(PATH_XINPUT):
 		xerrx(
 			None,
