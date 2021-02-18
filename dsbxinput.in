@@ -448,6 +448,7 @@ def xinput_var_to_prop(varname, val, vartype, default = None, mutable = True):
 
 def xinput_get_devlist(type_str):
 	input_devs = []
+	sysmouse_rec = []
 	rx = re.compile(
 		'.*?↳\s*(.*\S)\s*id=([0-9]+)' +
 		'\s*\[slave\s*' + type_str + '.*\]'
@@ -468,7 +469,11 @@ def xinput_get_devlist(type_str):
 			continue
 		if re.match('.*XTEST.*', m.group(1)):
 			continue
-		input_devs.append({'name': m.group(1), 'id': m.group(2)})
+		if m.group(1) == 'System mouse':
+			sysmouse_rec = {'name': m.group(1), 'id': m.group(2)}
+		else:
+			input_devs.append({'name': m.group(1), 'id': m.group(2)})
+	input_devs.append(sysmouse_rec)
 	proc.wait()
 	if proc.returncode != 0:
 		xerrx(
