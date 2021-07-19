@@ -1,5 +1,5 @@
 PROGRAM             = dsbxinput
-PYLUPDATE           = pylupdate5-3.7
+PYLUPDATE           = pylupdate5-3.8
 PREFIX             ?= /usr/local
 BINDIR              = ${DESTDIR}${PREFIX}/bin
 DATADIR             = ${DESTDIR}${PREFIX}/share/${PROGRAM}
