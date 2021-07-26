@@ -3,8 +3,10 @@
 DSBXinput is a graphical tool which uses *xinput* to configure pointing devices.
 
 ### Installation
+
 #### Dependencies
-* lang/python38
+
+* lang/python3
 * devel/py-qt5-core
 * x11-toolkits/py-qt5-gui
 * x11-toolkits/py-qt5-widgets
