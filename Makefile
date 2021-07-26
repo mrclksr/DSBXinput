@@ -1,5 +1,4 @@
 PROGRAM             = dsbxinput
-PYLUPDATE           = pylupdate5-3.8
 PREFIX             ?= /usr/local
 BINDIR              = ${DESTDIR}${PREFIX}/bin
 DATADIR             = ${DESTDIR}${PREFIX}/share/${PROGRAM}
@@ -22,7 +21,9 @@ ${PROGRAM}.desktop: ${PROGRAM}.desktop.in
 		${PROGRAM}.desktop.in > ${PROGRAM}.desktop
 
 lupdate: ${PROGRAM}
-	${PYLUPDATE} -noobsolete ${PROGRAM}.pro
+	pyversion=`python3 -c 'import sys; \
+		print(".".join(map(str, (sys.version_info[:2]))))'`; \
+	pylupdate5-$${pyversion} -noobsolete ${PROGRAM}.pro
 
 translate:
 	for i in locale/*.ts; do \
